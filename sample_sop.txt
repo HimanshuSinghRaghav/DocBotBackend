@@ -1,0 +1,43 @@
+Deep Fryer Safety & Maintenance SOP v1.2
+
+PPE Requirements:
+- Heat-resistant gloves
+- Apron
+- Closed shoes
+- Safety goggles
+
+Startup Procedure:
+1. Verify oil level is between MIN/MAX markers
+2. Ensure the drain valve is closed
+3. Set the thermostat to 180°C
+4. Wait for ready light to illuminate
+5. Check that all safety guards are in place
+
+Draining & Filtering Procedure:
+1. Turn off heat source
+2. Allow oil to cool to 60-70°C
+3. Place filter container under drain
+4. Open drain valve slowly
+5. Filter oil according to manufacturer guidelines
+6. Remove food particles and crumbs
+7. Close drain valve securely
+8. Refill oil to MAX level
+
+Emergency Procedures:
+If oil ignites:
+1. DO NOT use water
+2. Use Class K fire extinguisher
+3. Cut power immediately
+4. Alert manager
+5. Evacuate area if necessary
+
+Cleaning Schedule:
+- Daily: Filter oil and clean exterior
+- Weekly: Deep clean and inspect components
+- Monthly: Professional maintenance check
+
+Safety Notes:
+- Never leave fryer unattended while in use
+- Keep fire extinguisher within reach
+- Monitor oil temperature continuously
+- Report any malfunctions immediately

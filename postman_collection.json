@@ -1,0 +1,830 @@
+{
+    "info": {
+        "_postman_id": "f8e2b4d6-7c1a-4e3b-9f1c-8d2d3c0e5b4a",
+        "name": "DocBot API",
+        "description": "API collection for F&B Training DocBot",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Users",
+            "item": [
+                {
+                    "name": "Create User",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"user@example.com\",\n    \"name\": \"John Doe\",\n    \"role\": \"Crew\",\n    \"location\": \"Store 123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/users/",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "users",
+                                ""
+                            ]
+                        },
+                        "description": "Create a new user"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Users",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/users/?role=Crew&location=Store 123",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "users",
+                                ""
+                            ],
+                            "query": [
+                                {
+                                    "key": "role",
+                                    "value": "Crew",
+                                    "description": "Filter by role"
+                                },
+                                {
+                                    "key": "location",
+                                    "value": "Store 123",
+                                    "description": "Filter by location"
+                                }
+                            ]
+                        },
+                        "description": "Get all users with optional filters"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get User by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/users/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "users",
+                                "1"
+                            ]
+                        },
+                        "description": "Get a specific user by ID"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update User",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"John Smith\",\n    \"role\": \"Shift Lead\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/users/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "users",
+                                "1"
+                            ]
+                        },
+                        "description": "Update user information"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Documents",
+            "item": [
+                {
+                    "name": "Upload Document",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "file",
+                                    "type": "file",
+                                    "src": []
+                                },
+                                {
+                                    "key": "title",
+                                    "value": "Safety Guidelines",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "document_type",
+                                    "value": "SOP",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "version",
+                                    "value": "1.0",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "effective_date",
+                                    "value": "2024-03-15",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "language",
+                                    "value": "en",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/documents/upload",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "upload"
+                            ]
+                        },
+                        "description": "Upload and process a new document"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Documents",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/documents/?document_type=SOP&language=en",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                ""
+                            ],
+                            "query": [
+                                {
+                                    "key": "document_type",
+                                    "value": "SOP",
+                                    "description": "Filter by document type"
+                                },
+                                {
+                                    "key": "language",
+                                    "value": "en",
+                                    "description": "Filter by language"
+                                }
+                            ]
+                        },
+                        "description": "Get all documents with optional filters"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Document by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/documents/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1"
+                            ]
+                        },
+                        "description": "Get a specific document by ID"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Document",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/documents/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "1"
+                            ]
+                        },
+                        "description": "Delete a document and its associated file"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Query Documents",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"query\": \"What are the safety procedures?\",\n    \"document_ids\": [1, 2],\n    \"procedure_mode\": false,\n    \"language\": \"en\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/documents/query",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "query"
+                            ]
+                        },
+                        "description": "Query documents using RAG"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get AI Status",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/documents/ai-status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "documents",
+                                "ai-status"
+                            ]
+                        },
+                        "description": "Get current AI model status"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Training",
+            "item": [
+                {
+                    "name": "Create Quiz",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"title\": \"Safety Procedures Quiz\",\n    \"document_id\": 1\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/training/quizzes",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "training",
+                                "quizzes"
+                            ]
+                        },
+                        "description": "Create a new quiz"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Quizzes",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/training/quizzes?document_id=1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "training",
+                                "quizzes"
+                            ],
+                            "query": [
+                                {
+                                    "key": "document_id",
+                                    "value": "1",
+                                    "description": "Filter by document ID"
+                                }
+                            ]
+                        },
+                        "description": "Get all quizzes with optional document filter"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Question",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"question_text\": \"What is the first step in the safety procedure?\",\n    \"question_type\": \"MCQ\",\n    \"options\": {\n        \"A\": \"Check equipment\",\n        \"B\": \"Put on safety gear\",\n        \"C\": \"Read manual\",\n        \"D\": \"Call supervisor\"\n    },\n    \"correct_answer\": \"B\",\n    \"explanation\": \"Always put on appropriate safety gear before starting any procedure\",\n    \"source_chunk_id\": 1\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/training/quizzes/1/questions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "training",
+                                "quizzes",
+                                "1",
+                                "questions"
+                            ]
+                        },
+                        "description": "Create a new question for a quiz"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Questions",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/training/quizzes/1/questions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "training",
+                                "quizzes",
+                                "1",
+                                "questions"
+                            ]
+                        },
+                        "description": "Get all questions for a specific quiz"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Record Quiz Attempt",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"user_id\": 1,\n    \"quiz_id\": 1,\n    \"score\": 85.5,\n    \"answers\": {\n        \"1\": \"B\",\n        \"2\": \"A\"\n    }\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/training/attempts",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "training",
+                                "attempts"
+                            ]
+                        },
+                        "description": "Record a quiz attempt"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create/Update Training Record",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"user_id\": 1,\n    \"document_id\": 1,\n    \"status\": \"In Progress\",\n    \"progress\": 75.5\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/training/records",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "training",
+                                "records"
+                            ]
+                        },
+                        "description": "Create or update a training record"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Training Records",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/training/records?user_id=1&document_id=1&status=In Progress",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "training",
+                                "records"
+                            ],
+                            "query": [
+                                {
+                                    "key": "user_id",
+                                    "value": "1",
+                                    "description": "Filter by user ID"
+                                },
+                                {
+                                    "key": "document_id",
+                                    "value": "1",
+                                    "description": "Filter by document ID"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "In Progress",
+                                    "description": "Filter by status"
+                                }
+                            ]
+                        },
+                        "description": "Get training records with optional filters"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Checklists",
+            "item": [
+                {
+                    "name": "Create Checklist",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"title\": \"Daily Safety Checklist\",\n    \"description\": \"Safety checks to be performed daily\",\n    \"frequency\": \"Daily\",\n    \"items\": [\n        {\n            \"id\": \"1\",\n            \"text\": \"Check safety equipment\",\n            \"type\": \"checkbox\"\n        },\n        {\n            \"id\": \"2\",\n            \"text\": \"Inspect work area\",\n            \"type\": \"checkbox\"\n        }\n    ],\n    \"document_id\": 1\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/checklists/",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "checklists",
+                                ""
+                            ]
+                        },
+                        "description": "Create a new checklist"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Checklists",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/checklists/?frequency=Daily&document_id=1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "checklists",
+                                ""
+                            ],
+                            "query": [
+                                {
+                                    "key": "frequency",
+                                    "value": "Daily",
+                                    "description": "Filter by frequency"
+                                },
+                                {
+                                    "key": "document_id",
+                                    "value": "1",
+                                    "description": "Filter by document ID"
+                                }
+                            ]
+                        },
+                        "description": "Get all checklists with optional filters"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Checklist by ID",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/checklists/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "checklists",
+                                "1"
+                            ]
+                        },
+                        "description": "Get a specific checklist by ID"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Record Checklist Completion",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"checklist_id\": 1,\n    \"user_id\": 1,\n    \"responses\": {\n        \"1\": {\n            \"checked\": true,\n            \"notes\": \"All equipment in good condition\"\n        },\n        \"2\": {\n            \"checked\": true,\n            \"notes\": \"Work area clear\"\n        }\n    },\n    \"attestation\": true\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/checklists/completions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "checklists",
+                                "completions"
+                            ]
+                        },
+                        "description": "Record a checklist completion"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Checklist Completions",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/checklists/completions?checklist_id=1&user_id=1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "checklists",
+                                "completions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "checklist_id",
+                                    "value": "1",
+                                    "description": "Filter by checklist ID"
+                                },
+                                {
+                                    "key": "user_id",
+                                    "value": "1",
+                                    "description": "Filter by user ID"
+                                }
+                            ]
+                        },
+                        "description": "Get checklist completions with optional filters"
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Analytics",
+            "item": [
+                {
+                    "name": "Get Training Completion Stats",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/analytics/training/completion?document_id=1&role=Crew&location=Store 123",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "training",
+                                "completion"
+                            ],
+                            "query": [
+                                {
+                                    "key": "document_id",
+                                    "value": "1",
+                                    "description": "Filter by document ID"
+                                },
+                                {
+                                    "key": "role",
+                                    "value": "Crew",
+                                    "description": "Filter by user role"
+                                },
+                                {
+                                    "key": "location",
+                                    "value": "Store 123",
+                                    "description": "Filter by location"
+                                }
+                            ]
+                        },
+                        "description": "Get training completion statistics"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Training Scores",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/analytics/training/scores?quiz_id=1&role=Crew&location=Store 123",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "training",
+                                "scores"
+                            ],
+                            "query": [
+                                {
+                                    "key": "quiz_id",
+                                    "value": "1",
+                                    "description": "Filter by quiz ID"
+                                },
+                                {
+                                    "key": "role",
+                                    "value": "Crew",
+                                    "description": "Filter by user role"
+                                },
+                                {
+                                    "key": "location",
+                                    "value": "Store 123",
+                                    "description": "Filter by location"
+                                }
+                            ]
+                        },
+                        "description": "Get quiz score statistics"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Checklist Adherence",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/analytics/checklists/adherence?checklist_id=1&role=Crew&location=Store 123&days=30",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "checklists",
+                                "adherence"
+                            ],
+                            "query": [
+                                {
+                                    "key": "checklist_id",
+                                    "value": "1",
+                                    "description": "Filter by checklist ID"
+                                },
+                                {
+                                    "key": "role",
+                                    "value": "Crew",
+                                    "description": "Filter by user role"
+                                },
+                                {
+                                    "key": "location",
+                                    "value": "Store 123",
+                                    "description": "Filter by location"
+                                },
+                                {
+                                    "key": "days",
+                                    "value": "30",
+                                    "description": "Number of days to analyze"
+                                }
+                            ]
+                        },
+                        "description": "Get checklist adherence statistics"
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Dashboard Summary",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{base_url}}/api/analytics/dashboard/summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "dashboard",
+                                "summary"
+                            ]
+                        },
+                        "description": "Get a summary of key metrics for the dashboard"
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ],
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [""]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [""]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000",
+            "type": "string"
+        }
+    ]
+}
