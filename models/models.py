@@ -42,6 +42,14 @@ class Document(Base):
     language = Column(String, default="en")
     file_path = Column(String)
     doc_metadata = Column(JSON)
+    
+    # Processing status fields
+    processing_status = Column(String, default="pending")  # pending, processing, completed, failed
+    processing_progress = Column(Integer, default=0)  # 0-100%
+    processing_message = Column(Text)  # Current processing step or error message
+    processing_started_at = Column(DateTime(timezone=True))
+    processing_completed_at = Column(DateTime(timezone=True))
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -67,6 +75,7 @@ class Quiz(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String)
     document_id = Column(Integer, ForeignKey("documents.id"))
+    category = Column(String)  # safety_guidance, physical_work_process, emergency_procedure, other
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -86,6 +95,7 @@ class Question(Base):
     correct_answer = Column(String)
     explanation = Column(Text)
     source_chunk_id = Column(Integer, ForeignKey("chunks.id"))
+    category = Column(String)  # safety_guidance, physical_work_process, emergency_procedure, other
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships
@@ -164,6 +174,7 @@ class LearningModule(Base):
     learning_objectives = Column(JSON)  # List of learning objectives
     prerequisites = Column(JSON)  # List of prerequisite modules
     module_metadata = Column(JSON)  # Additional metadata
+    category = Column(String)  # safety_guidance, physical_work_process, emergency_procedure, other
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -187,6 +198,7 @@ class LearningSession(Base):
     is_required = Column(Boolean, default=True)  # Whether this session is required
     unlock_conditions = Column(JSON)  # Conditions to unlock this session
     session_metadata = Column(JSON)  # Additional metadata
+    category = Column(String)  # safety_guidance, physical_work_process, emergency_procedure, other
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -212,6 +224,7 @@ class SessionContent(Base):
     # For instructions/text content
     instruction_text = Column(Text)
     
+    category = Column(String)  # safety_guidance, physical_work_process, emergency_procedure, other
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     # Relationships

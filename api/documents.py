@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import os
 import shutil
 import uuid
 from datetime import datetime
+import traceback
 
 from database.database import get_db
 from models.models import Document, Chunk
@@ -21,8 +22,188 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'.pdf', '.txt', '.md', '.docx', '.doc'}
 
+def process_document_background(
+    document_id: int,
+    file_path: str,
+    title: str,
+    document_type: str,
+    version: str,
+    effective_date: datetime,
+    language: str,
+    metadata: dict
+):
+    """
+    Background task to process document after upload.
+    This includes OCR, chunking, embedding generation, and learning content creation.
+    """
+    from database.database import SessionLocal
+    from utils.document_processor import DocumentProcessor
+    
+    db = SessionLocal()
+    try:
+        # Get the document record
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if not document:
+            print(f"Document {document_id} not found for background processing")
+            return
+        
+        # Update status to processing
+        document.processing_status = "processing"
+        document.processing_progress = 10
+        document.processing_message = "Starting document processing..."
+        document.processing_started_at = datetime.utcnow()
+        db.commit()
+        
+        print(f"Starting background processing for document {document_id}: {title}")
+        
+        # Step 1: Process document (OCR, chunking, embeddings)
+        document.processing_progress = 20
+        document.processing_message = "Extracting text from document..."
+        db.commit()
+        
+        processor = DocumentProcessor()
+        
+        # Update file path and metadata in document
+        document.file_path = file_path
+        document.doc_metadata = metadata
+        db.commit()
+        
+        # Step 2: Extract text and create chunks
+        document.processing_progress = 40
+        document.processing_message = "Creating document chunks..."
+        db.commit()
+        
+        # Process the document content
+        from utils.document_processor import DocumentProcessor
+        processor = DocumentProcessor()
+        
+        # Use the existing process_document method but with the pre-created document
+        try:
+            # Extract text from the document based on file type
+            extension = os.path.splitext(file_path)[1].lower()
+            
+            if extension == ".txt":
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    text = f.read()
+            elif extension == ".md":
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    text = f.read()
+            elif extension == ".pdf":
+                text = processor._extract_text_from_pdf(file_path)
+            elif extension in [".docx", ".doc"]:
+                text = processor._extract_text_from_docx(file_path)
+            else:
+                raise ValueError(f"Unsupported file extension: {extension}")
+            
+            # Step 3: Split into chunks
+            document.processing_progress = 50
+            document.processing_message = "Splitting document into chunks..."
+            db.commit()
+            
+            chunks = processor._split_text_into_chunks(text, chunk_size=1500, overlap=300)
+            
+            # Step 4: Create embeddings and store chunks
+            document.processing_progress = 60
+            document.processing_message = "Creating embeddings..."
+            db.commit()
+            
+            chunk_objects = []
+            for i, chunk in enumerate(chunks):
+                # Create embedding
+                if processor.embeddings:
+                    try:
+                        embedding = processor.embeddings.embed_query(chunk)
+                    except Exception as e:
+                        print(f"Error creating embedding for chunk {i}: {e}")
+                        embedding = processor._create_simple_embedding(chunk)
+                else:
+                    embedding = processor._create_simple_embedding(chunk)
+                
+                # Create chunk record
+                chunk_metadata = {
+                    "index": i,
+                    "document_id": document.id,
+                    "document_title": title,
+                    "document_version": version,
+                    "section": f"chunk_{i}",
+                }
+                
+                chunk_obj = Chunk(
+                    content=chunk,
+                    embedding=processor._serialize_embedding(embedding),
+                    chunk_metadata=chunk_metadata
+                )
+                
+                db.add(chunk_obj)
+                chunk_objects.append(chunk_obj)
+            
+            db.commit()
+            
+            # Associate chunks with document
+            for chunk_obj in chunk_objects:
+                document.chunks.append(chunk_obj)
+            
+            db.commit()
+            
+            # Step 5: Create index cache
+            document.processing_progress = 70
+            document.processing_message = "Creating document index..."
+            db.commit()
+            
+            processor._create_simple_index(document.id, chunks)
+            
+            # Step 6: Generate learning content
+            document.processing_progress = 80
+            document.processing_message = "Generating learning content and quizzes..."
+            db.commit()
+            
+            from utils.content_generator import ContentGenerator
+            content_generator = ContentGenerator(db)
+            success, message = content_generator.generate_learning_content(document.id)
+            
+            if not success:
+                print(f"Warning: Content generation failed: {message}")
+                document.processing_message = f"Processing completed with content generation warning: {message}"
+            else:
+                document.processing_message = "Document processing completed successfully!"
+            
+            # Step 7: Complete processing
+            document.processing_progress = 100
+            document.processing_status = "completed"
+            document.processing_completed_at = datetime.utcnow()
+            db.commit()
+            
+            print(f"Successfully completed background processing for document {document_id}")
+            
+        except Exception as process_error:
+            print(f"Error during document processing: {process_error}")
+            traceback.print_exc()
+            
+            document.processing_status = "failed"
+            document.processing_message = f"Processing failed: {str(process_error)}"
+            document.processing_completed_at = datetime.utcnow()
+            db.commit()
+            
+    except Exception as e:
+        print(f"Error in background processing for document {document_id}: {e}")
+        traceback.print_exc()
+        
+        try:
+            document = db.query(Document).filter(Document.id == document_id).first()
+            if document:
+                document.processing_status = "failed"
+                document.processing_message = f"Background processing failed: {str(e)}"
+                document.processing_completed_at = datetime.utcnow()
+                db.commit()
+        except:
+            pass  # Don't let database errors crash the background task
+            
+    finally:
+        db.close()
+
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     title: str = Form(...),
     document_type: str = Form(...),
@@ -31,7 +212,7 @@ async def upload_document(
     language: str = Form("en"),
     db: Session = Depends(get_db)
 ):
-    """Upload and process a new document."""
+    """Upload a document and start background processing."""
     try:
         # Validate file and filename
         if not file.filename:
@@ -63,8 +244,7 @@ async def upload_document(
         # Parse the effective date
         effective_date_obj = datetime.strptime(effective_date, "%Y-%m-%d")
         
-        # Process the document using DocumentProcessor
-        processor = DocumentProcessor()
+        # Create document record immediately with pending status
         metadata = {
             "filename": file.filename, 
             "original_filename": file.filename,
@@ -72,27 +252,38 @@ async def upload_document(
             "file_size": file.size,
             "file_extension": file_extension
         }
-        document = processor.process_document(
-            file_path=file_path,
+        
+        document = Document(
             title=title,
             document_type=document_type,
             version=version,
             effective_date=effective_date_obj,
             language=language,
-            metadata=metadata
+            file_path=file_path,
+            doc_metadata=metadata,
+            processing_status="pending",
+            processing_progress=0,
+            processing_message="Document uploaded, processing will start shortly..."
         )
         
-        # Check if there were extraction errors
-        if document.doc_metadata and "extraction_error" in document.doc_metadata:
-            # Return success but with a warning
-            return DocumentResponse(
-                id=document.id,
-                title=document.title,
-                message=f"Document uploaded with extraction issues: {document.doc_metadata['extraction_error']}",
-                success=True,
-                document=document
-            )
+        db.add(document)
+        db.commit()
+        db.refresh(document)
         
+        # Start background processing
+        background_tasks.add_task(
+            process_document_background,
+            document.id,
+            file_path,
+            title,
+            document_type,
+            version,
+            effective_date_obj,
+            language,
+            metadata
+        )
+        
+        # Return immediate response
         return DocumentResponse(
             id=document.id,
             title=document.title,
@@ -100,8 +291,12 @@ async def upload_document(
             version=document.version,
             effective_date=document.effective_date,
             language=document.language,
-            created_at=document.created_at
+            created_at=document.created_at,
+            processing_status=document.processing_status,
+            processing_progress=document.processing_progress,
+            processing_message=document.processing_message
         )
+        
     except Exception as e:
         # Clean up the file if processing fails
         if 'file_path' in locals() and os.path.exists(file_path) and os.path.isfile(file_path):
@@ -111,11 +306,29 @@ async def upload_document(
                 print(f"Warning: Could not clean up file {file_path}: {cleanup_error}")
         
         # Log the full error for debugging
-        import traceback
         print(f"Document upload error: {str(e)}")
         print(f"Traceback: {traceback.format_exc()}")
         
         raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
+
+@router.get("/status/{document_id}")
+def get_document_processing_status(document_id: int, db: Session = Depends(get_db)):
+    """Get the processing status of a document."""
+    document = db.query(Document).filter(Document.id == document_id).first()
+    
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    return {
+        "document_id": document.id,
+        "title": document.title,
+        "processing_status": document.processing_status,
+        "processing_progress": document.processing_progress,
+        "processing_message": document.processing_message,
+        "processing_started_at": document.processing_started_at,
+        "processing_completed_at": document.processing_completed_at,
+        "created_at": document.created_at
+    }
 
 @router.get("/", response_model=List[DocumentResponse])
 def get_documents(
@@ -142,7 +355,12 @@ def get_documents(
             version=doc.version,
             effective_date=doc.effective_date,
             language=doc.language,
-            created_at=doc.created_at
+            created_at=doc.created_at,
+            processing_status=doc.processing_status or "completed",  # Legacy documents default to completed
+            processing_progress=doc.processing_progress or 100,
+            processing_message=doc.processing_message,
+            processing_started_at=doc.processing_started_at,
+            processing_completed_at=doc.processing_completed_at
         )
         for doc in documents
     ]
@@ -162,7 +380,12 @@ def get_document(document_id: int, db: Session = Depends(get_db)):
         version=document.version,
         effective_date=document.effective_date,
         language=document.language,
-        created_at=document.created_at
+        created_at=document.created_at,
+        processing_status=document.processing_status or "completed",  # Legacy documents default to completed
+        processing_progress=document.processing_progress or 100,
+        processing_message=document.processing_message,
+        processing_started_at=document.processing_started_at,
+        processing_completed_at=document.processing_completed_at
     )
 
 @router.delete("/{document_id}")

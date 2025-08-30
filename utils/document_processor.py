@@ -392,6 +392,11 @@ class DocumentProcessor:
         
         return embedding
     
+    def _serialize_embedding(self, embedding: List[float]) -> str:
+        """Serialize embedding to JSON string for database storage."""
+        import json
+        return json.dumps(embedding)
+    
     def _create_simple_index(self, doc_id: int, chunks: List[str]):
         """Create a simple index for the document chunks and cache embeddings."""
         # Create index directory

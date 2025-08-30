@@ -15,6 +15,13 @@ class DocumentResponse(DocumentBase):
     id: int
     effective_date: datetime
     created_at: datetime
+    
+    # Processing status fields
+    processing_status: str = "pending"
+    processing_progress: int = 0
+    processing_message: Optional[str] = None
+    processing_started_at: Optional[datetime] = None
+    processing_completed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

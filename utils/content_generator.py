@@ -18,33 +18,27 @@ from utils.rag_engine import RAGEngine
 # Define schema for AI responses
 CHUNK_ANALYSIS_SCHEMA = """
 {
-  "has_learning_content": boolean,  // Whether this chunk contains material suitable for learning content
-  "has_quiz_content": boolean,     // Whether this chunk contains material suitable for quiz questions
-  "learning_lessons": [             // Array of lessons if has_learning_content is true, empty array otherwise
+  "is_food_beverage_procedure": boolean,  // REQUIRED: true only if content describes physical food/beverage work processes
+  "procedure_type": string,               // "equipment_operation", "food_preparation", "cleaning_process", "safety_procedure", "not_applicable"
+  "has_learning_content": boolean,       // Whether this chunk contains material suitable for learning content
+  "has_quiz_content": boolean,           // Whether this chunk contains material suitable for quiz questions
+  "learning_lessons": [                   // Array of lessons if has_learning_content is true, empty array otherwise
     {
-      "title": string,              // Title of the lesson
-      "summary": string,            // Brief summary of the lesson (2-3 sentences)
-      "key_points": [string],       // Array of key points (3-5 items)
-      "definitions": {              // Object with terms and definitions (if any)
-        "term1": "definition1",
-        "term2": "definition2"
-      },
-      "best_practices": [string]    // Array of best practices or tips (if any)
+      "title": string,
+      "summary": string,
+      "key_points": [string],
+      "best_practices": [string],
+      "category": "physical_work_process"
     }
   ],
-  "quiz_questions": [               // Array of questions if has_quiz_content is true, empty array otherwise
+  "quiz_questions": [                     // Array of questions if has_quiz_content is true, empty array otherwise
     {
-      "question_text": string,       // The actual question
-      "question_type": string,       // Either "MCQ" or "TRUE_FALSE"
-      "options": {                   // Options for the question
-        "A": string,
-        "B": string,
-        "C": string,                 // Optional for MCQ
-        "D": string                  // Optional for MCQ
-      },
-      "correct_answer": string,      // The correct option (A, B, C, or D)
-      "explanation": string,         // Explanation of why the answer is correct
-      "source_text": string         // Source text from the chunk that supports this question
+      "question_text": string,
+      "question_type": string,             // "MCQ" or "TRUE_FALSE"
+      "options": {"A": string, "B": string, "C": string, "D": string},
+      "correct_answer": string,
+      "explanation": string,
+      "category": "physical_work_process"
     }
   ]
 }
@@ -89,6 +83,7 @@ class ContentGenerator:
                 self.openrouter_model = ChatOpenAI(
                     model="openai/gpt-3.5-turbo",
                     temperature=0.7,
+                    max_tokens=2048,  # Reduced token limit to save credits
                     openai_api_base="https://openrouter.ai/api/v1",
                     openai_api_key=self.openrouter_api_key
                 )
@@ -150,42 +145,74 @@ class ContentGenerator:
             all_questions = []
             
             print(f"Processing {len(valid_chunks)} valid chunks individually")
-            for i, chunk in enumerate(valid_chunks):
-                print(f"\nProcessing chunk {i+1}/{len(valid_chunks)}")
-                chunk_content = chunk.get("content", "")
-                chunk_metadata = chunk.get("metadata", {})
+            
+            # Add batch processing to handle credits more efficiently
+            batch_size = 50  # Process in smaller batches to monitor credits
+            total_batches = math.ceil(len(valid_chunks) / batch_size)
+            
+            for batch_num in range(total_batches):
+                start_idx = batch_num * batch_size
+                end_idx = min((batch_num + 1) * batch_size, len(valid_chunks))
+                batch_chunks = valid_chunks[start_idx:end_idx]
                 
-                # For each chunk, determine if it contains material for learning content and/or quiz
-                chunk_lessons, chunk_questions = self._process_individual_chunk(
-                    document.title, 
-                    chunk_content, 
-                    chunk_metadata,
-                    chunk_id=chunk.get("chunk_id")
-                )
+                print(f"\nProcessing batch {batch_num + 1}/{total_batches} ({len(batch_chunks)} chunks)")
                 
-                # Collect results
-                if chunk_lessons:
-                    all_lessons.extend(chunk_lessons)
-                if chunk_questions:
-                    all_questions.extend(chunk_questions)
-                    
-                # Give a progress update
-                print(f"  - Found {len(chunk_lessons)} lessons and {len(chunk_questions)} questions in chunk {i+1}")
+                try:
+                    for i, chunk in enumerate(batch_chunks):
+                        chunk_idx = start_idx + i + 1
+                        print(f"Processing chunk {chunk_idx}/{len(valid_chunks)}")
+                        chunk_content = chunk.get("content", "")
+                        chunk_metadata = chunk.get("metadata", {})
+                        
+                        # For each chunk, determine if it contains material for learning content and/or quiz
+                        chunk_lessons, chunk_questions = self._process_individual_chunk(
+                            document.title, 
+                            chunk_content, 
+                            chunk_metadata,
+                            chunk_id=chunk.get("chunk_id")
+                        )
+                        
+                        # Save to database immediately if content was generated
+                        if chunk_lessons or chunk_questions:
+                            print(f"  - Found {len(chunk_lessons)} lessons and {len(chunk_questions)} questions - saving to DB")
+                            
+                            # Save this chunk's content to database
+                            try:
+                                self._save_chunk_content_to_db(document, chunk_lessons, chunk_questions)
+                                all_lessons.extend(chunk_lessons)
+                                all_questions.extend(chunk_questions)
+                            except Exception as save_error:
+                                print(f"  - Error saving chunk content: {save_error}")
+                        else:
+                            print(f"  - No F&B procedure content found in chunk {chunk_idx}")
+                        
+                except Exception as e:
+                    if "credits" in str(e).lower() or "payment" in str(e).lower():
+                        print(f"⚠️  Credits exhausted at batch {batch_num + 1}. Processed {start_idx} chunks.")
+                        print(f"Generated content so far: {len(all_lessons)} lessons, {len(all_questions)} questions")
+                        if all_lessons or all_questions:
+                            print("Proceeding with partial content generation...")
+                            break
+                        else:
+                            return False, "OpenRouter credits exhausted before generating any content"
+                    else:
+                        raise e
             
-            # Create consolidated quiz data structure
-            quiz_data = {
-                "quiz_title": f"Quiz for {document.title}",
-                "questions": all_questions
-            }
+            # Create consolidated results (even if saved incrementally)
+            final_message = f"Processed {len(valid_chunks)} chunks. Generated {len(all_lessons)} lessons and {len(all_questions)} questions for food & beverage procedures."
             
-            # Save lessons and quiz to database
-            success, message = self._save_content_to_db(document, all_lessons, quiz_data)
+            # Create structured learning modules and sessions if we have content
+            if all_lessons or all_questions:
+                try:
+                    self._create_learning_modules_and_sessions(document, all_lessons, all_questions)
+                    return True, final_message
+                except Exception as e:
+                    print(f"Error creating learning modules: {e}")
+                    return True, f"{final_message} Warning: Could not create learning modules."
+            else:
+                return True, "No food & beverage procedures found in document. No content generated."
             
-            # Create structured learning modules and sessions
-            if success:
-                self._create_learning_modules_and_sessions(document, all_lessons, all_questions)
-            
-            return success, message
+            return True, final_message
             
         except Exception as e:
             traceback.print_exc()
@@ -295,37 +322,47 @@ class ContentGenerator:
                 print(f"Chunk too short for analysis: {len(chunk_content)} characters")
                 return [], []
             
-            # Create the analysis prompt
+            # Limit chunk content to save tokens
+            max_chunk_length = 3000
+            if len(chunk_content) > max_chunk_length:
+                chunk_content = chunk_content[:max_chunk_length] + "..."
+                print(f"Truncated chunk to {max_chunk_length} characters to save tokens")
+            
+            # Create the analysis prompt - SHORT AND FOCUSED
             system_prompt = f"""
-You are an expert content analyzer for training materials. Your task is to analyze document chunks and determine if they contain material suitable for learning content or quiz questions.
+You analyze food & beverage work procedures. Respond ONLY with JSON.
 
-Analyze the provided chunk and respond with JSON in this exact format:
+ONLY generate content for physical food/beverage processes like:
+- Equipment operation (fryers, ovens, mixers, dishwashers)
+- Food preparation steps (cutting, cooking, mixing, serving)
+- Cleaning procedures (sanitizing equipment, surfaces)
+- Safety procedures in food handling
+
+SKIP: administrative content, company policies, general information.
+
+JSON format:
 {CHUNK_ANALYSIS_SCHEMA}
 
-Important guidelines:
-1. Only set has_learning_content to true if the chunk contains substantive educational material
-2. Only set has_quiz_content to true if the chunk contains specific facts, procedures, or concepts that can be tested
-3. If the chunk doesn't contain meaningful learning material, set both to false and return empty arrays
-4. Generate 1-3 lessons maximum for learning content
-5. Generate 2-5 quiz questions maximum for quiz content
-6. Ensure all information is directly based on the chunk content
+Generate 1-2 lessons max, 2-4 questions max.
 """
 
             user_prompt = f"""
 Document: {document_title}
-Chunk Content:
+Content:
 {chunk_content}
 
-Analyze this chunk and determine if it contains material that can be used as learning content or quiz questions. If the content is not substantial enough for learning or testing (like headers, footers, random text, etc.), respond with has_learning_content: false and has_quiz_content: false.
-
-Provide your analysis in the specified JSON format.
+Analyze for food/beverage physical procedures only. Return JSON.
 """
 
-            # Get AI response
+            # Get AI response with error handling for credits
             response = self._generate_ai_response(system_prompt, user_prompt)
             
             if not response:
-                print(f"No response from AI for chunk {chunk_id}")
+                print(f"No response from AI for chunk {chunk_id} (possible credits issue)")
+                # If we're running out of credits, stop processing more chunks
+                if "credits" in str(response).lower() or "payment" in str(response).lower():
+                    print("⚠️  OpenRouter credits exhausted. Stopping content generation.")
+                    raise Exception("OpenRouter credits exhausted")
                 return [], []
             
             # Parse the JSON response
@@ -341,21 +378,35 @@ Provide your analysis in the specified JSON format.
                 # Extract lessons and questions
                 lessons = analysis.get('learning_lessons', [])
                 questions = analysis.get('quiz_questions', [])
+                is_food_beverage_procedure = analysis.get('is_food_beverage_procedure', False)
+                procedure_type = analysis.get('procedure_type', 'not_applicable')
+                
+                # Log analysis
+                print(f"Food/beverage procedure: {is_food_beverage_procedure}, Type: {procedure_type}")
+                
+                # Filter: Only include content if it's a food & beverage procedure
+                if not is_food_beverage_procedure or procedure_type == 'not_applicable':
+                    print(f"Skipping content - not a food/beverage procedure")
+                    return [], []  # Return empty lists for non-F&B procedures
+                
+                print(f"Generating content for F&B procedure: {procedure_type}")
                 
                 # Add chunk metadata to lessons
                 for lesson in lessons:
                     lesson['source_chunk_id'] = chunk_id
                     lesson['source_metadata'] = chunk_metadata
+                    lesson['category'] = 'physical_work_process'  # Set as physical work process
                 
                 # Add chunk metadata to questions
                 for question in questions:
                     question['source_chunk_id'] = chunk_id
                     question['source_metadata'] = chunk_metadata
+                    question['category'] = 'physical_work_process'  # Set as physical work process
                     # Ensure source_text is included
                     if 'source_text' not in question:
                         question['source_text'] = chunk_content[:200] + "..." if len(chunk_content) > 200 else chunk_content
                 
-                print(f"Chunk analysis: {len(lessons)} lessons, {len(questions)} questions")
+                print(f"Chunk analysis: {len(lessons)} lessons, {len(questions)} questions for {procedure_type}")
                 return lessons, questions
                 
             except (json.JSONDecodeError, ValueError) as e:
@@ -374,14 +425,22 @@ Provide your analysis in the specified JSON format.
                         for lesson in lessons:
                             lesson['source_chunk_id'] = chunk_id
                             lesson['source_metadata'] = chunk_metadata
+                            lesson['category'] = 'physical_work_process'
                         
                         for question in questions:
                             question['source_chunk_id'] = chunk_id
                             question['source_metadata'] = chunk_metadata
+                            question['category'] = 'physical_work_process'
                             if 'source_text' not in question:
                                 question['source_text'] = chunk_content[:200] + "..." if len(chunk_content) > 200 else chunk_content
                         
-                        print(f"Fixed JSON parsing - Chunk analysis: {len(lessons)} lessons, {len(questions)} questions")
+                        # Apply F&B procedure filtering again
+                        is_food_beverage_procedure = analysis.get('is_food_beverage_procedure', False)
+                        if not is_food_beverage_procedure:
+                            print(f"Skipping fixed content - not a food/beverage procedure")
+                            return [], []
+                        
+                        print(f"Fixed JSON parsing - Found {len(lessons)} lessons, {len(questions)} questions for F&B procedure")
                         return lessons, questions
                     except Exception as fix_error:
                         print(f"Error even after fixing JSON for chunk {chunk_id}: {fix_error}")
@@ -390,6 +449,17 @@ Provide your analysis in the specified JSON format.
                 
         except Exception as e:
             print(f"Error processing individual chunk {chunk_id}: {e}")
+            
+            # Check if it's a credits/payment error
+            if "credits" in str(e).lower() or "payment" in str(e).lower() or "402" in str(e):
+                print("⚠️  OpenRouter API credits exhausted!")
+                print("Solutions:")
+                print("1. Add credits at https://openrouter.ai/settings/credits")
+                print("2. Use a different AI provider (OpenAI/Gemini)")
+                print("3. Process fewer chunks at a time")
+                # Re-raise to stop processing
+                raise Exception("OpenRouter credits exhausted") from e
+            
             traceback.print_exc()
             return [], []
         """
@@ -1063,9 +1133,13 @@ For each question, include the specific source text from the document that suppo
             document.doc_metadata["last_updated"] = datetime.now().isoformat()
             
             # Create quiz record
+            # Determine the primary category for this quiz based on questions
+            quiz_category = self._determine_primary_category(quiz_data["questions"])
+            
             quiz = Quiz(
                 title=quiz_data["quiz_title"],
-                document_id=document.id
+                document_id=document.id,
+                category=quiz_category
             )
             self.db.add(quiz)
             self.db.flush()  # Flush to get the quiz ID
@@ -1096,7 +1170,8 @@ For each question, include the specific source text from the document that suppo
                         options=q_data["options"],
                         correct_answer=q_data["correct_answer"],
                         explanation=q_data["explanation"],
-                        source_chunk_id=source_chunk_id
+                        source_chunk_id=source_chunk_id,
+                        category=q_data.get("category", "other")
                     )
                     self.db.add(question)
             
@@ -1108,6 +1183,122 @@ For each question, include the specific source text from the document that suppo
         except Exception as e:
             self.db.rollback()
             return False, f"Error saving content to database: {str(e)}"
+    
+    def _save_chunk_content_to_db(self, document: Document, lessons: List[Dict[str, Any]], questions: List[Dict[str, Any]]) -> bool:
+        """
+        Save individual chunk's content to database immediately
+        
+        Args:
+            document: Document model
+            lessons: Generated lessons from this chunk
+            questions: Generated quiz questions from this chunk
+            
+        Returns:
+            Success status
+        """
+        try:
+            # Create or get existing quiz for this document
+            existing_quiz = self.db.query(Quiz).filter(Quiz.document_id == document.id).first()
+            
+            if not existing_quiz:
+                # Create new quiz
+                quiz = Quiz(
+                    title=f"F&B Procedures - {document.title}",
+                    document_id=document.id,
+                    category="physical_work_process"
+                )
+                self.db.add(quiz)
+                self.db.flush()  # Get the quiz ID
+            else:
+                quiz = existing_quiz
+            
+            # Add questions to quiz
+            for q_data in questions:
+                question = Question(
+                    quiz_id=quiz.id,
+                    question_text=q_data["question_text"],
+                    question_type=q_data["question_type"],
+                    options=q_data["options"],
+                    correct_answer=q_data["correct_answer"],
+                    explanation=q_data["explanation"],
+                    category="physical_work_process"
+                )
+                self.db.add(question)
+            
+            # Save lessons to document metadata
+            if not document.doc_metadata:
+                document.doc_metadata = {}
+            
+            if "lessons" not in document.doc_metadata:
+                document.doc_metadata["lessons"] = []
+            
+            # Add new lessons to existing ones
+            document.doc_metadata["lessons"].extend(lessons)
+            document.doc_metadata["last_updated"] = datetime.now().isoformat()
+            
+            # Mark as modified for SQLAlchemy
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(document, "doc_metadata")
+            
+            # Commit changes
+            self.db.commit()
+            
+            return True
+            
+        except Exception as e:
+            print(f"Error saving chunk content to database: {e}")
+            self.db.rollback()
+            return False
+    
+    def _determine_content_category(self, content: Dict[str, Any]) -> str:
+        """
+        Determine the primary category for content (lessons + questions)
+        
+        Args:
+            content: Dictionary with 'lessons' and 'questions' keys
+            
+        Returns:
+            Primary category string
+        """
+        all_items = content.get('lessons', []) + content.get('questions', [])
+        
+        if not all_items:
+            return "other"
+            
+        # Count categories
+        category_counts = {}
+        for item in all_items:
+            category = item.get("category", "other")
+            category_counts[category] = category_counts.get(category, 0) + 1
+        
+        # Return the most common category
+        if category_counts:
+            return max(category_counts, key=category_counts.get)
+        return "other"
+    
+    def _determine_primary_category(self, questions: List[Dict[str, Any]]) -> str:
+        """
+        Determine the primary category for a quiz based on its questions
+        
+        Args:
+            questions: List of question dictionaries
+            
+        Returns:
+            Primary category string
+        """
+        if not questions:
+            return "other"
+            
+        # Count categories
+        category_counts = {}
+        for question in questions:
+            category = question.get("category", "other")
+            category_counts[category] = category_counts.get(category, 0) + 1
+        
+        # Return the most common category
+        if category_counts:
+            return max(category_counts, key=category_counts.get)
+        return "other"
     
     def _create_learning_modules_and_sessions(
         self, 
@@ -1131,6 +1322,9 @@ For each question, include the specific source text from the document that suppo
             
             # Create learning modules
             for i, (topic, content) in enumerate(grouped_content.items()):
+                # Determine the primary category for this module
+                module_category = self._determine_content_category(content)
+                
                 # Create module
                 module = LearningModule(
                     title=topic,
@@ -1139,7 +1333,8 @@ For each question, include the specific source text from the document that suppo
                     module_order=i + 1,
                     estimated_duration=self._estimate_module_duration(content),
                     difficulty_level=self._determine_difficulty_level(content),
-                    learning_objectives=self._extract_learning_objectives(content['lessons'])
+                    learning_objectives=self._extract_learning_objectives(content['lessons']),
+                    category=module_category
                 )
                 
                 self.db.add(module)
@@ -1375,7 +1570,8 @@ For each question, include the specific source text from the document that suppo
                     session_order=session_order,
                     session_type="lesson",
                     estimated_duration=len(lesson_batch) * 5,  # 5 min per lesson
-                    is_required=True
+                    is_required=True,
+                    category=module.category
                 )
                 
                 self.db.add(session)
@@ -1387,7 +1583,8 @@ For each question, include the specific source text from the document that suppo
                         session_id=session.id,
                         content_type="lesson",
                         content_order=j + 1,
-                        lesson_data=lesson
+                        lesson_data=lesson,
+                        category=lesson.get('category', module.category)
                     )
                     self.db.add(content_item)
                 
@@ -1413,7 +1610,8 @@ For each question, include the specific source text from the document that suppo
                     estimated_duration=len(question_batch) * 2,  # 2 min per question
                     passing_score=70,
                     max_attempts=3,
-                    is_required=True
+                    is_required=True,
+                    category=module.category
                 )
                 
                 self.db.add(session)
@@ -1428,7 +1626,8 @@ For each question, include the specific source text from the document that suppo
                         question_type=question_data['question_type'],
                         options=question_data['options'],
                         correct_answer=question_data['correct_answer'],
-                        explanation=question_data['explanation']
+                        explanation=question_data['explanation'],
+                        category=question_data.get('category', module.category)
                     )
                     self.db.add(question)
                     self.db.flush()
@@ -1438,7 +1637,8 @@ For each question, include the specific source text from the document that suppo
                         session_id=session.id,
                         content_type="quiz_question",
                         content_order=j + 1,
-                        question_id=question.id
+                        question_id=question.id,
+                        category=question_data.get('category', module.category)
                     )
                     self.db.add(content_item)
                 
