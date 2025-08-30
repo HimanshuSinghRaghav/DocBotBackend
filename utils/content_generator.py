@@ -12,7 +12,7 @@ from langchain.prompts import PromptTemplate
 from langchain.schema import HumanMessage, SystemMessage
 import google.generativeai as genai
 
-from models.models import Document, Quiz, Question, TrainingRecord, Chunk
+from models.models import Document, Quiz, Question, TrainingRecord, Chunk, LearningModule, LearningSession, SessionContent
 from utils.rag_engine import RAGEngine
 
 # Define schema for AI responses
@@ -180,6 +180,10 @@ class ContentGenerator:
             
             # Save lessons and quiz to database
             success, message = self._save_content_to_db(document, all_lessons, quiz_data)
+            
+            # Create structured learning modules and sessions
+            if success:
+                self._create_learning_modules_and_sessions(document, all_lessons, all_questions)
             
             return success, message
             
@@ -1104,3 +1108,381 @@ For each question, include the specific source text from the document that suppo
         except Exception as e:
             self.db.rollback()
             return False, f"Error saving content to database: {str(e)}"
+    
+    def _create_learning_modules_and_sessions(
+        self, 
+        document: Document, 
+        lessons: List[Dict[str, Any]], 
+        questions: List[Dict[str, Any]]
+    ):
+        """
+        Create structured learning modules and sessions from generated content
+        
+        Args:
+            document: Document model
+            lessons: Generated lessons
+            questions: Generated quiz questions
+        """
+        try:
+            print(f"Creating learning modules and sessions for document {document.id}")
+            
+            # Group lessons and questions by topics/themes
+            grouped_content = self._group_content_by_topics(lessons, questions)
+            
+            # Create learning modules
+            for i, (topic, content) in enumerate(grouped_content.items()):
+                # Create module
+                module = LearningModule(
+                    title=topic,
+                    description=f"Learn about {topic.lower()} from {document.title}",
+                    document_id=document.id,
+                    module_order=i + 1,
+                    estimated_duration=self._estimate_module_duration(content),
+                    difficulty_level=self._determine_difficulty_level(content),
+                    learning_objectives=self._extract_learning_objectives(content['lessons'])
+                )
+                
+                self.db.add(module)
+                self.db.flush()  # Get the module ID
+                
+                # Create sessions for this module
+                self._create_sessions_for_module(module, content)
+                
+            self.db.commit()
+            print(f"Successfully created {len(grouped_content)} learning modules")
+            
+        except Exception as e:
+            print(f"Error creating learning modules and sessions: {e}")
+            traceback.print_exc()
+            self.db.rollback()
+    
+    def _group_content_by_topics(self, lessons: List[Dict[str, Any]], questions: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """
+        Group lessons and questions by common topics/themes
+        
+        Args:
+            lessons: List of lesson dictionaries
+            questions: List of question dictionaries
+            
+        Returns:
+            Dictionary mapping topic names to content
+        """
+        grouped = {}
+        
+        # If we have few lessons/questions, create a single module
+        if len(lessons) <= 3 and len(questions) <= 20:
+            topic_name = lessons[0].get('title', 'Learning Module') if lessons else 'Quiz Module'
+            # Clean up the topic name
+            topic_name = topic_name.replace('Learning content for ', '').replace('Quiz for ', '')
+            
+            grouped[topic_name] = {
+                'lessons': lessons,
+                'questions': questions
+            }
+            return grouped
+        
+        # For larger content, group by keywords and themes
+        # Simple grouping based on lesson titles and key terms
+        topic_keywords = {}
+        
+        # Extract keywords from lessons
+        for lesson in lessons:
+            title = lesson.get('title', '')
+            key_points = lesson.get('key_points', [])
+            
+            # Extract key terms from title and key points
+            terms = self._extract_key_terms_from_lesson(title, key_points)
+            
+            # Find best matching topic or create new one
+            best_topic = self._find_best_topic_match(terms, topic_keywords)
+            
+            if best_topic:
+                if best_topic not in grouped:
+                    grouped[best_topic] = {'lessons': [], 'questions': []}
+                grouped[best_topic]['lessons'].append(lesson)
+            else:
+                # Create new topic
+                topic_name = self._generate_topic_name(title, terms)
+                if topic_name not in grouped:
+                    grouped[topic_name] = {'lessons': [], 'questions': []}
+                    topic_keywords[topic_name] = terms
+                grouped[topic_name]['lessons'].append(lesson)
+        
+        # Distribute questions among topics based on content similarity
+        for question in questions:
+            question_text = question.get('question_text', '')
+            source_text = question.get('source_text', '')
+            
+            # Find best topic for this question
+            best_topic = self._find_best_topic_for_question(
+                question_text + ' ' + source_text, 
+                grouped
+            )
+            
+            if best_topic:
+                grouped[best_topic]['questions'].append(question)
+            else:
+                # Add to first available topic or create general topic
+                if grouped:
+                    first_topic = list(grouped.keys())[0]
+                    grouped[first_topic]['questions'].append(question)
+                else:
+                    grouped['General Knowledge'] = {'lessons': [], 'questions': [question]}
+        
+        # Ensure no empty modules and reasonable distribution
+        grouped = self._balance_content_distribution(grouped)
+        
+        return grouped
+    
+    def _extract_key_terms_from_lesson(self, title: str, key_points: List[str]) -> List[str]:
+        """Extract key terms from lesson title and key points."""
+        import re
+        
+        text = title + ' ' + ' '.join(key_points)
+        
+        # Extract meaningful terms (2+ characters, not common words)
+        terms = re.findall(r'\b[A-Za-z]{2,}\b', text.lower())
+        
+        # Filter out common words
+        common_words = {'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'her', 'was', 'one', 'our', 'had', 'day', 'get', 'use', 'man', 'new', 'now', 'way', 'may', 'say', 'each', 'which', 'their', 'time', 'will', 'about', 'if', 'up', 'out', 'many', 'then', 'them', 'these', 'so', 'some', 'what', 'would', 'make', 'like', 'into', 'him', 'has', 'two', 'more', 'very', 'when', 'come', 'its', 'over', 'think', 'also', 'your', 'work', 'life', 'only', 'see', 'own', 'other', 'after', 'first', 'well', 'year', 'where', 'much', 'should', 'people', 'how', 'before', 'take', 'good', 'through', 'could', 'great', 'little', 'world', 'still', 'back', 'here', 'because', 'even', 'right', 'want', 'too', 'any', 'most', 'old', 'need', 'said', 'such', 'being', 'have', 'that', 'this', 'with', 'they', 'from', 'there', 'been', 'were', 'know', 'just', 'down', 'last', 'long', 'might', 'came', 'every', 'made', 'look', 'find', 'between', 'never', 'again', 'things', 'going', 'does', 'different', 'away', 'something', 'without', 'another', 'around', 'during', 'really', 'important', 'almost', 'those', 'both', 'until', 'however', 'while', 'part'}
+        
+        meaningful_terms = [term for term in terms if term not in common_words and len(term) > 2]
+        
+        # Return top 5 most frequent terms
+        from collections import Counter
+        term_counts = Counter(meaningful_terms)
+        return [term for term, count in term_counts.most_common(5)]
+    
+    def _find_best_topic_match(self, terms: List[str], existing_topics: Dict[str, List[str]]) -> Optional[str]:
+        """Find the best matching existing topic for the given terms."""
+        if not existing_topics or not terms:
+            return None
+        
+        best_match = None
+        best_score = 0
+        
+        for topic, topic_terms in existing_topics.items():
+            # Calculate overlap score
+            overlap = len(set(terms) & set(topic_terms))
+            total_terms = len(set(terms) | set(topic_terms))
+            score = overlap / total_terms if total_terms > 0 else 0
+            
+            if score > best_score and score > 0.3:  # Minimum similarity threshold
+                best_score = score
+                best_match = topic
+        
+        return best_match
+    
+    def _generate_topic_name(self, title: str, terms: List[str]) -> str:
+        """Generate a topic name from lesson title and terms."""
+        # Clean up title
+        clean_title = title.replace('Learning content for ', '').replace('Quiz for ', '')
+        
+        # If title is meaningful, use it
+        if len(clean_title) > 5 and not clean_title.startswith('Document'):
+            return clean_title[:50]  # Limit length
+        
+        # Otherwise, create from key terms
+        if terms:
+            return ' '.join(terms[:3]).title()
+        
+        return 'General Topics'
+    
+    def _find_best_topic_for_question(self, question_content: str, grouped: Dict[str, Dict[str, Any]]) -> Optional[str]:
+        """Find the best topic for a question based on content similarity."""
+        if not grouped:
+            return None
+        
+        question_terms = self._extract_key_terms(question_content.lower(), max_terms=10)
+        
+        best_topic = None
+        best_score = 0
+        
+        for topic, content in grouped.items():
+            # Get terms from lessons in this topic
+            topic_terms = []
+            for lesson in content['lessons']:
+                lesson_terms = self._extract_key_terms_from_lesson(
+                    lesson.get('title', ''), 
+                    lesson.get('key_points', [])
+                )
+                topic_terms.extend(lesson_terms)
+            
+            # Calculate similarity
+            overlap = len(set(question_terms) & set(topic_terms))
+            total_terms = len(set(question_terms) | set(topic_terms))
+            score = overlap / total_terms if total_terms > 0 else 0
+            
+            if score > best_score:
+                best_score = score
+                best_topic = topic
+        
+        return best_topic if best_score > 0.1 else None
+    
+    def _balance_content_distribution(self, grouped: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Balance content distribution across topics."""
+        if not grouped:
+            return grouped
+        
+        # Remove empty topics
+        filtered = {}
+        for topic, content in grouped.items():
+            if content['lessons'] or content['questions']:
+                filtered[topic] = content
+        
+        # If too many small topics, merge some
+        if len(filtered) > 10:
+            # Merge topics with very few items
+            merged = {}
+            general_content = {'lessons': [], 'questions': []}
+            
+            for topic, content in filtered.items():
+                total_items = len(content['lessons']) + len(content['questions'])
+                if total_items >= 3:  # Keep substantial topics
+                    merged[topic] = content
+                else:  # Merge small topics
+                    general_content['lessons'].extend(content['lessons'])
+                    general_content['questions'].extend(content['questions'])
+            
+            if general_content['lessons'] or general_content['questions']:
+                merged['Additional Topics'] = general_content
+            
+            filtered = merged
+        
+        return filtered or {'Learning Module': {'lessons': [], 'questions': []}}
+    
+    def _create_sessions_for_module(self, module: LearningModule, content: Dict[str, Any]):
+        """Create learning sessions for a module."""
+        lessons = content.get('lessons', [])
+        questions = content.get('questions', [])
+        
+        session_order = 1
+        
+        # Create lesson sessions (if we have lessons)
+        if lessons:
+            # Group lessons into sessions (max 3 lessons per session)
+            lesson_batches = [lessons[i:i+3] for i in range(0, len(lessons), 3)]
+            
+            for i, lesson_batch in enumerate(lesson_batches):
+                session_title = f"{module.title} - Lessons {i+1}"
+                if len(lesson_batches) == 1:
+                    session_title = f"{module.title} - Learning Content"
+                
+                session = LearningSession(
+                    title=session_title,
+                    description=f"Learn the key concepts and procedures for {module.title.lower()}",
+                    module_id=module.id,
+                    session_order=session_order,
+                    session_type="lesson",
+                    estimated_duration=len(lesson_batch) * 5,  # 5 min per lesson
+                    is_required=True
+                )
+                
+                self.db.add(session)
+                self.db.flush()
+                
+                # Add lesson content to session
+                for j, lesson in enumerate(lesson_batch):
+                    content_item = SessionContent(
+                        session_id=session.id,
+                        content_type="lesson",
+                        content_order=j + 1,
+                        lesson_data=lesson
+                    )
+                    self.db.add(content_item)
+                
+                session_order += 1
+        
+        # Create quiz sessions (if we have questions)
+        if questions:
+            # Group questions into sessions (5-10 questions per session)
+            questions_per_session = min(10, max(5, len(questions) // 3)) if len(questions) > 15 else len(questions)
+            question_batches = [questions[i:i+questions_per_session] for i in range(0, len(questions), questions_per_session)]
+            
+            for i, question_batch in enumerate(question_batches):
+                session_title = f"{module.title} - Quiz {i+1}"
+                if len(question_batches) == 1:
+                    session_title = f"{module.title} - Assessment"
+                
+                session = LearningSession(
+                    title=session_title,
+                    description=f"Test your knowledge of {module.title.lower()}",
+                    module_id=module.id,
+                    session_order=session_order,
+                    session_type="quiz",
+                    estimated_duration=len(question_batch) * 2,  # 2 min per question
+                    passing_score=70,
+                    max_attempts=3,
+                    is_required=True
+                )
+                
+                self.db.add(session)
+                self.db.flush()
+                
+                # Add questions to session
+                for j, question_data in enumerate(question_batch):
+                    # First, create the question in the database if not already exists
+                    question = Question(
+                        quiz_id=None,  # We'll link via session content instead
+                        question_text=question_data['question_text'],
+                        question_type=question_data['question_type'],
+                        options=question_data['options'],
+                        correct_answer=question_data['correct_answer'],
+                        explanation=question_data['explanation']
+                    )
+                    self.db.add(question)
+                    self.db.flush()
+                    
+                    # Add question to session content
+                    content_item = SessionContent(
+                        session_id=session.id,
+                        content_type="quiz_question",
+                        content_order=j + 1,
+                        question_id=question.id
+                    )
+                    self.db.add(content_item)
+                
+                session_order += 1
+    
+    def _estimate_module_duration(self, content: Dict[str, Any]) -> int:
+        """Estimate module duration in minutes."""
+        lessons = content.get('lessons', [])
+        questions = content.get('questions', [])
+        
+        # 5 minutes per lesson + 2 minutes per question
+        return len(lessons) * 5 + len(questions) * 2
+    
+    def _determine_difficulty_level(self, content: Dict[str, Any]) -> str:
+        """Determine difficulty level based on content complexity."""
+        lessons = content.get('lessons', [])
+        questions = content.get('questions', [])
+        
+        # Simple heuristic based on content amount and complexity
+        total_content = len(lessons) + len(questions)
+        
+        if total_content <= 10:
+            return "Beginner"
+        elif total_content <= 25:
+            return "Intermediate"
+        else:
+            return "Advanced"
+    
+    def _extract_learning_objectives(self, lessons: List[Dict[str, Any]]) -> List[str]:
+        """Extract learning objectives from lessons."""
+        objectives = []
+        
+        for lesson in lessons[:3]:  # Limit to first 3 lessons
+            title = lesson.get('title', '')
+            key_points = lesson.get('key_points', [])
+            
+            # Create objective from title
+            if title and not title.startswith('Learning content'):
+                clean_title = title.replace('Learning content for ', '')
+                objectives.append(f"Understand {clean_title.lower()}")
+            
+            # Add key points as objectives
+            for point in key_points[:2]:  # Max 2 points per lesson
+                if point and len(point) > 10:
+                    objectives.append(f"Learn {point.lower()}")
+        
+        return objectives[:5]  # Maximum 5 objectives

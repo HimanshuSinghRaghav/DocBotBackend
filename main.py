@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from database.database import get_db, engine
 from models import models
-from api import documents, users, training, checklists, analytics, tts
+from api import documents, users, training, checklists, analytics, tts, learning
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -25,6 +25,7 @@ app.add_middleware(
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
 app.include_router(training.router, prefix="/api/training", tags=["Training"])
+app.include_router(learning.router, prefix="/api/learning", tags=["Learning"])
 app.include_router(checklists.router, prefix="/api/checklists", tags=["Checklists"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
 app.include_router(tts.router, prefix="/api/tts", tags=["Text-to-Speech"])

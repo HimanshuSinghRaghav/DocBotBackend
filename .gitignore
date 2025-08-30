@@ -203,7 +203,6 @@ htmlcov/
 test_results/
 
 # Machine learning models (if applicable)
-models/
 *.pkl
 *.pickle
 *.joblib

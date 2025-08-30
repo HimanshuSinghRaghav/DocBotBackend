@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import os
 import shutil
+import uuid
 from datetime import datetime
 
 from database.database import get_db
@@ -17,6 +18,9 @@ router = APIRouter()
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Allowed file extensions
+ALLOWED_EXTENSIONS = {'.pdf', '.txt', '.md', '.docx', '.doc'}
+
 @router.post("/upload", response_model=DocumentResponse)
 async def upload_document(
     file: UploadFile = File(...),
@@ -29,8 +33,30 @@ async def upload_document(
 ):
     """Upload and process a new document."""
     try:
+        # Validate file and filename
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No filename provided")
+        
+        # Check file extension
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        if file_extension not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported file type. Allowed types: {', '.join(ALLOWED_EXTENSIONS)}"
+            )
+        
+        # Ensure upload directory exists
+        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        
+        # Generate safe filename with unique identifier
+        safe_filename = f"{uuid.uuid4()}_{file.filename.replace(' ', '_')}"
+        file_path = os.path.join(UPLOAD_DIR, safe_filename)
+        
+        # Ensure we're not overwriting a directory
+        if os.path.isdir(file_path):
+            raise HTTPException(status_code=400, detail="Invalid filename - conflicts with directory")
+        
         # Save the uploaded file
-        file_path = os.path.join(UPLOAD_DIR, file.filename)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
@@ -39,7 +65,13 @@ async def upload_document(
         
         # Process the document using DocumentProcessor
         processor = DocumentProcessor()
-        metadata = {"filename": file.filename, "file_size": file.size}
+        metadata = {
+            "filename": file.filename, 
+            "original_filename": file.filename,
+            "safe_filename": safe_filename,
+            "file_size": file.size,
+            "file_extension": file_extension
+        }
         document = processor.process_document(
             file_path=file_path,
             title=title,
@@ -72,8 +104,17 @@ async def upload_document(
         )
     except Exception as e:
         # Clean up the file if processing fails
-        if 'file_path' in locals() and os.path.exists(file_path):
-            os.remove(file_path)
+        if 'file_path' in locals() and os.path.exists(file_path) and os.path.isfile(file_path):
+            try:
+                os.remove(file_path)
+            except Exception as cleanup_error:
+                print(f"Warning: Could not clean up file {file_path}: {cleanup_error}")
+        
+        # Log the full error for debugging
+        import traceback
+        print(f"Document upload error: {str(e)}")
+        print(f"Traceback: {traceback.format_exc()}")
+        
         raise HTTPException(status_code=500, detail=f"Error processing document: {str(e)}")
 
 @router.get("/", response_model=List[DocumentResponse])
